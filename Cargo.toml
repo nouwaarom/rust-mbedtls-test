@@ -1,0 +1,13 @@
+[package]
+name = "rust-mbedtls-test"
+version = "0.1.0"
+authors = ["Elbert van de Put <elbert@vention.nl>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mbedtls = { git = "https://github.com/nouwaarom/rust-mbedtls" , branch="update-build-script"}
+
+#[dependencies.clang-sys]
+#features = ["clang_10_0"]
