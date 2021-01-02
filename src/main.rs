@@ -14,6 +14,7 @@ use mbedtls::x509::Certificate;
 use mbedtls::Result as TlsResult;
 use mbedtls::debugging::debug_set_level;
 use mbedtls::timing::TimingDelayContext;
+use std::time::Duration;
 
 mod keys;
 
@@ -23,7 +24,10 @@ struct ReadableUdpSocket {
 
 impl ReadableUdpSocket {
     fn new() -> ReadableUdpSocket {
-        ReadableUdpSocket { parent: UdpSocket::bind("127.0.0.1:44331").unwrap() }
+        let mut udp_socket = UdpSocket::bind("127.0.0.1:44331").unwrap();
+        udp_socket.set_read_timeout(Some(Duration::new(10,0)));
+        //udp_socket.set_nonblocking(true);
+        ReadableUdpSocket { parent:  udp_socket }
     }
 
     fn connect(&mut self, addr: &str) -> IoResult<()> {
@@ -52,7 +56,7 @@ pub fn entropy_new<'a>() -> crate::mbedtls::rng::OsEntropy<'a> {
 }
 
 fn result_main(addr: &str) -> TlsResult<()> {
-    debug_set_level(3);
+    debug_set_level(1);
     let mut debug_callback = |level: c_int, file: *const c_char, line: c_int, message: *const c_char| {
         unsafe {
             print!("MBEDTLS: {}", std::ffi::CStr::from_ptr(message).to_string_lossy());
@@ -68,11 +72,12 @@ fn result_main(addr: &str) -> TlsResult<()> {
     config.set_rng(Some(&mut rng));
     config.set_ca_list(Some(&mut *cert), None);
     config.set_dbg(Some(&mut debug_callback));
+    // TODO, define max content lenth.
 
     let mut ctx = Context::new(&config)?;
     ctx.set_timer_callback(&mut timing_delay_context);
 
-        let mut conn = ReadableUdpSocket::new();
+    let mut conn = ReadableUdpSocket::new();
     conn.connect(addr);
     let mut session = match ctx.establish(&mut conn, Some("localhost")) {
         Ok(s) => s,
@@ -85,7 +90,19 @@ fn result_main(addr: &str) -> TlsResult<()> {
     let mut line = String::new();
     stdin().read_line(&mut line).unwrap();
     session.write_all(line.as_bytes()).unwrap();
-    io::copy(&mut session, &mut stdout()).unwrap();
+
+    let mut read_buff: [u8;1024] = [0; 1024];
+    let bytes_read = session.read(&mut read_buff);
+    match bytes_read {
+        Ok(_) => {
+            let res = String::from_utf8(read_buff.to_vec());
+            match res {
+                Ok(s)  => println!("MAIN: Server sent: {}", s),
+                Err(_) => println!("MAIN: Server did not send a string"),
+            }
+        },
+        Err(_) => println!("MAIN: Server did not respond."),
+    }
 
     Ok(())
 }
